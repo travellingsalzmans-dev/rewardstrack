@@ -20,6 +20,7 @@ type CardTemplate = {
   card_type: string | null
   perks: string | null
   credits_included: string | null
+  has_no_fx_fee: boolean
 }
 
 type CategoryRates = {
@@ -278,19 +279,24 @@ const POINT_VALUES: Record<string, number> = {
   'Membership Rewards': 1.5,
   'Aeroplan Points': 1.8,
   'Scene+ Points': 1.0,
+  'Scène+ Points': 1.0,
   'Aventura Points': 1.0,
   'TD Rewards Points': 0.7,
   'Avion Points': 1.2,
   'BMO Points': 0.7,
+  'Rewards (BMO Points)': 0.7,
   'WestJet Dollars': 1.5,
   'PC Optimum Points': 0.7,
   'CT Money': 1.0,
+  'CT Money (Rewards)': 1.0,
   'AIR MILES': 1.0,
   'Brim Rewards Points': 0.7,
   'VIPorter Points': 1.0,
   'Flying Blue Miles': 1.5,
   'MBNA Rewards Points': 0.5,
   'A la carte Rewards Points': 0.8,
+  'À la carte Rewards Points': 0.8,
+  'Marriott Bonvoy Points': 0.8,
   'RBC Rewards': 0.7,
   'Adapta Points': 0.5,
   'Low Interest': 0,
@@ -336,12 +342,8 @@ function getWelcomeBonus(cardName: string): number {
   return 0
 }
 
-// Cards with no foreign transaction fees (saves ~2.5% on FX purchases).
-const NO_FX_PATTERNS = ['passport', 'u.s. dollar', 'wealthsimple', 'brim', 'hsbc']
-
-function isNoFxFeeCard(cardName: string): boolean {
-  const lower = cardName.toLowerCase()
-  return NO_FX_PATTERNS.some((p) => lower.includes(p))
+function isNoFxFeeCard(t: CardTemplate): boolean {
+  return t.has_no_fx_fee
 }
 
 function isAmexCard(template: CardTemplate): boolean {
@@ -378,7 +380,7 @@ function scoreCard(
 
   // FX fee savings for no-FX-fee cards (2.5% of foreign spend)
   let fxSavings = 0
-  if (isNoFxFeeCard(t.card_name) && foreignCurrencySpend > 0) {
+  if (isNoFxFeeCard(t) && foreignCurrencySpend > 0) {
     fxSavings = Math.round(foreignCurrencySpend * 0.025 * 100) / 100
     totalValue += fxSavings
     valueBreakdown.push({ category: 'FX savings', value: fxSavings, points: 0 })
@@ -530,7 +532,7 @@ export default function RecommendationsPage() {
     async function load() {
       const [cardsRes, templatesRes] = await Promise.all([
         supabase.from('credit_cards').select('id, card_name, bank_name, status'),
-        supabase.from('card_templates').select('id, card_name, issuer, annual_fee, reward_type, card_type, perks, credits_included').order('issuer'),
+        supabase.from('card_templates').select('id, card_name, issuer, annual_fee, reward_type, card_type, perks, credits_included, has_no_fx_fee').order('issuer'),
       ])
       if (cardsRes.data) setCards(cardsRes.data)
       if (templatesRes.data) setTemplates(templatesRes.data)
