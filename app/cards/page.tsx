@@ -12,6 +12,10 @@ type Card = {
   points_program: string | null
   status: string
   date_opened: string
+  welcome_bonus_points: number | null
+  welcome_bonus_deadline: string | null
+  perks: string | null
+  credits_included: string | null
 }
 
 type CardTemplate = {
@@ -20,6 +24,51 @@ type CardTemplate = {
   issuer: string
   annual_fee: number
   reward_type: string
+  card_type: string | null
+  perks: string | null
+  credits_included: string | null
+}
+
+type CategoryRates = { dining: number; groceries: number; gas: number; travel: number; transit: number; streaming: number; general: number }
+
+const REWARD_RATES: Record<string, CategoryRates> = {
+  'Cobalt Card':                      { dining: 5, groceries: 5, gas: 2, travel: 2, transit: 2, streaming: 3, general: 1 },
+  'Aeroplan Visa Infinite':           { dining: 1, groceries: 1.5, gas: 1.5, travel: 1.5, transit: 1, streaming: 1, general: 1 },
+  'Gold Rewards Card':                { dining: 1, groceries: 2, gas: 2, travel: 2, transit: 1, streaming: 1, general: 1 },
+  'Platinum Card':                    { dining: 2, groceries: 1, gas: 1, travel: 2, transit: 1, streaming: 1, general: 1 },
+  'Aventura Visa Infinite':           { dining: 1, groceries: 1.5, gas: 1.5, travel: 2, transit: 1, streaming: 1, general: 1 },
+  'Scotia Gold American Express':     { dining: 5, groceries: 5, gas: 3, travel: 1, transit: 3, streaming: 3, general: 1 },
+  'Eclipse Visa Infinite':            { dining: 5, groceries: 5, gas: 5, travel: 1, transit: 5, streaming: 1, general: 1 },
+  'Avion Visa Infinite':              { dining: 1, groceries: 1, gas: 1, travel: 1.25, transit: 1, streaming: 1, general: 1 },
+  'Cash Back Visa Infinite':          { dining: 1, groceries: 3, gas: 3, travel: 1, transit: 3, streaming: 3, general: 1 },
+  'Dividend Visa Infinite':           { dining: 2, groceries: 4, gas: 4, travel: 1, transit: 2, streaming: 1, general: 1 },
+  'Aeroplan Visa Infinite Privilege': { dining: 1.5, groceries: 1.5, gas: 1.5, travel: 1.5, transit: 1.5, streaming: 1.25, general: 1.25 },
+  'WestJet RBC World Elite':          { dining: 1.5, groceries: 2, gas: 2, travel: 1.5, transit: 2, streaming: 1.5, general: 1.5 },
+  'Scene+ Visa Infinite':             { dining: 2, groceries: 2, gas: 1, travel: 3, transit: 2, streaming: 2, general: 1 },
+  'Triangle World Elite Mastercard':  { dining: 1, groceries: 3, gas: 3, travel: 1, transit: 1, streaming: 1, general: 1 },
+  'PC Financial World Elite':         { dining: 1, groceries: 3, gas: 3, travel: 1, transit: 1, streaming: 1, general: 1 },
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  dining: 'Dining', groceries: 'Groceries', gas: 'Gas', travel: 'Travel', transit: 'Transit', streaming: 'Streaming',
+}
+
+function getRates(cardName: string): CategoryRates {
+  if (REWARD_RATES[cardName]) return REWARD_RATES[cardName]
+  const lower = cardName.toLowerCase().trim()
+  for (const [key, rates] of Object.entries(REWARD_RATES)) {
+    const keyLower = key.toLowerCase()
+    if (lower.includes(keyLower) || keyLower.includes(lower)) return rates
+  }
+  return { dining: 1, groceries: 1, gas: 1, travel: 1, transit: 1, streaming: 1, general: 1 }
+}
+
+function getHighRateCategories(cardName: string): { category: string; rate: number }[] {
+  const rates = getRates(cardName)
+  return Object.entries(rates)
+    .filter(([key, rate]) => key !== 'general' && rate >= 3)
+    .map(([key, rate]) => ({ category: CATEGORY_LABELS[key] || key, rate }))
+    .sort((a, b) => b.rate - a.rate)
 }
 
 export default function CardsPage() {
@@ -28,12 +77,15 @@ export default function CardsPage() {
   const [templates, setTemplates] = useState<CardTemplate[]>([])
   const [showForm, setShowForm] = useState(false)
   const [useTemplate, setUseTemplate] = useState(true)
+  const [selectedIssuer, setSelectedIssuer] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState('')
   const [cardName, setCardName] = useState('')
   const [bankName, setBankName] = useState('')
   const [annualFee, setAnnualFee] = useState('')
   const [pointsProgram, setPointsProgram] = useState('')
   const [dateOpened, setDateOpened] = useState(new Date().toISOString().split('T')[0])
+  const [welcomeBonusPoints, setWelcomeBonusPoints] = useState('')
+  const [welcomeBonusDeadline, setWelcomeBonusDeadline] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -51,13 +103,21 @@ export default function CardsPage() {
     load()
   }, [])
 
+  const issuers = [...new Set(templates.map(t => t.issuer))].sort()
+  const filteredTemplates = selectedIssuer
+    ? templates.filter(t => t.issuer === selectedIssuer)
+    : templates
+
   const resetForm = () => {
+    setSelectedIssuer('')
     setSelectedTemplate('')
     setCardName('')
     setBankName('')
     setAnnualFee('')
     setPointsProgram('')
     setDateOpened(new Date().toISOString().split('T')[0])
+    setWelcomeBonusPoints('')
+    setWelcomeBonusDeadline('')
     setError('')
     setShowForm(false)
   }
@@ -74,6 +134,8 @@ export default function CardsPage() {
     let bank = bankName
     let fee = Number(annualFee) || 0
     let program = pointsProgram || null
+    let cardPerks: string | null = null
+    let cardCredits: string | null = null
     if (useTemplate && selectedTemplate) {
       const t = templates.find(t => String(t.id) === selectedTemplate)
       if (t) {
@@ -81,6 +143,8 @@ export default function CardsPage() {
         bank = t.issuer
         fee = t.annual_fee
         program = t.reward_type
+        cardPerks = t.perks
+        cardCredits = t.credits_included
       }
     }
 
@@ -93,6 +157,10 @@ export default function CardsPage() {
         annual_fee: fee,
         points_program: program,
         date_opened: dateOpened,
+        welcome_bonus_points: welcomeBonusPoints ? Number(welcomeBonusPoints) : null,
+        welcome_bonus_deadline: welcomeBonusDeadline || null,
+        perks: cardPerks,
+        credits_included: cardCredits,
       })
       .select()
       .single()
@@ -180,22 +248,37 @@ export default function CardsPage() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {useTemplate ? (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Select a card</label>
-                  <select
-                    value={selectedTemplate}
-                    onChange={(e) => setSelectedTemplate(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Choose a card...</option>
-                    {templates.map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.issuer} — {t.card_name} (${t.annual_fee}/yr)
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Select issuer (optional)</label>
+                    <select
+                      value={selectedIssuer}
+                      onChange={(e) => { setSelectedIssuer(e.target.value); setSelectedTemplate('') }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">All issuers</option>
+                      {issuers.map(issuer => (
+                        <option key={issuer} value={issuer}>{issuer}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Select a card</label>
+                    <select
+                      value={selectedTemplate}
+                      onChange={(e) => setSelectedTemplate(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Choose a card...</option>
+                      {filteredTemplates.map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.card_name} (${t.annual_fee}/yr){t.card_type === 'Business' ? ' [Business]' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
               ) : (
                 <>
                   <div>
@@ -241,6 +324,22 @@ export default function CardsPage() {
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Welcome Bonus Points (optional)</label>
+                <input
+                  type="number" value={welcomeBonusPoints} onChange={(e) => setWelcomeBonusPoints(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g. 50000" min="0"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Welcome Bonus Deadline (optional)</label>
+                <input
+                  type="date" value={welcomeBonusDeadline} onChange={(e) => setWelcomeBonusDeadline(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
               <div className="flex gap-3">
                 <button
                   type="submit" disabled={saving}
@@ -267,7 +366,7 @@ export default function CardsPage() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {cards.map(card => (
               <div key={card.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
                 <div className="flex justify-between items-start">
@@ -282,11 +381,54 @@ export default function CardsPage() {
                     Remove
                   </button>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-3 text-sm text-gray-500">
-                  <span>${card.annual_fee}/yr</span>
-                  {card.points_program && <span>{card.points_program}</span>}
-                  <span className="capitalize">{card.status}</span>
+                <div className="mt-3 flex flex-wrap gap-2 text-sm">
+                  <span className="inline-block bg-gray-100 text-gray-700 px-2 py-0.5 rounded">${card.annual_fee}/yr</span>
+                  {card.points_program && card.points_program !== 'None' && (
+                    <span className="inline-block bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{card.points_program}</span>
+                  )}
+                  <span className="inline-block bg-green-50 text-green-700 px-2 py-0.5 rounded capitalize">{card.status}</span>
                 </div>
+                {(card.perks || getHighRateCategories(card.card_name).length > 0) && (
+                  <div className="mt-3">
+                    <p className="text-xs font-medium text-gray-500 mb-1">Perks</p>
+                    <ul className="text-sm text-gray-600 space-y-0.5">
+                      {getHighRateCategories(card.card_name).map(({ category, rate }) => (
+                        <li key={category} className="flex items-start gap-1.5">
+                          <span className="mt-1.5 shrink-0 w-1 h-1 rounded-full bg-purple-400" />
+                          <span><span className="font-medium text-purple-700">{rate}x</span> {category}</span>
+                        </li>
+                      ))}
+                      {card.perks && card.perks.split(';').map((perk, i) => perk.trim() && (
+                        <li key={i} className="flex items-start gap-1.5">
+                          <span className="mt-1.5 shrink-0 w-1 h-1 rounded-full bg-blue-400" />
+                          <span>{perk.trim()}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {card.credits_included && (
+                  <div className="mt-2">
+                    <p className="text-xs font-medium text-gray-500 mb-1">Credits</p>
+                    <ul className="text-sm text-gray-600 space-y-0.5">
+                      {card.credits_included.split(';').map((credit, i) => credit.trim() && (
+                        <li key={i} className="flex items-start gap-1.5">
+                          <span className="text-green-400 mt-1.5 shrink-0 w-1 h-1 rounded-full bg-green-400" />
+                          <span>{credit.trim()}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {(card.welcome_bonus_points || card.welcome_bonus_deadline) && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <p className="text-xs font-medium text-gray-500 mb-1">Welcome Bonus</p>
+                    <div className="flex gap-3 text-sm text-gray-600">
+                      {card.welcome_bonus_points && <span>{card.welcome_bonus_points.toLocaleString()} pts</span>}
+                      {card.welcome_bonus_deadline && <span>by {card.welcome_bonus_deadline}</span>}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

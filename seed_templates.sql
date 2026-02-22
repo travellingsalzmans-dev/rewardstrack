@@ -712,3 +712,28 @@ INSERT INTO card_templates (
  'Premium travel perks including access to 1,200+ airport lounges; no foreign transaction fees', NULL,
  true, -1, false, NULL, 0, false, NULL, false, NULL, false,
  false, 0, NULL, NULL, false, NULL, true, 0);
+
+-- ==================== USER PREFERENCES ====================
+CREATE TABLE IF NOT EXISTS user_preferences (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  notify_bonus_deadline boolean DEFAULT true,
+  notify_fee_renewal boolean DEFAULT true,
+  notify_points_expiry boolean DEFAULT true,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users can view own preferences') THEN
+    CREATE POLICY "Users can view own preferences" ON user_preferences FOR SELECT USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users can insert own preferences') THEN
+    CREATE POLICY "Users can insert own preferences" ON user_preferences FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users can update own preferences') THEN
+    CREATE POLICY "Users can update own preferences" ON user_preferences FOR UPDATE USING (auth.uid() = user_id);
+  END IF;
+END $$;
